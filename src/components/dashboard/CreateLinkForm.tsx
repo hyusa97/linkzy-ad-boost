@@ -20,9 +20,7 @@ const CreateLinkForm = ({ userId }: CreateLinkFormProps) => {
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const generateShortCode = () => {
-    return Math.random().toString(36).substring(2, 8);
-  };
+  const generateShortCode = () => Math.random().toString(36).substring(2, 8);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,22 +35,24 @@ const CreateLinkForm = ({ userId }: CreateLinkFormProps) => {
           description: error.errors[0].message,
           variant: "destructive",
         });
-        return;
       }
+      return;
     }
 
     setLoading(true);
 
     try {
       const shortCode = generateShortCode();
-      
-      const { error } = await supabase
-        .from("links")
-        .insert({
-          owner_id: userId,
-          original_url: url,
-          short_code: shortCode,
-        });
+
+      // ✅ Normalize URL (auto-add https:// if missing)
+      const normalizedUrl = url.startsWith("http") ? url : `https://${url}`;
+
+      // ✅ Insert short link record
+      const { error } = await supabase.from("links").insert({
+        owner_id: userId,
+        original_url: normalizedUrl,
+        short_code: shortCode,
+      });
 
       if (error) throw error;
 
@@ -61,8 +61,9 @@ const CreateLinkForm = ({ userId }: CreateLinkFormProps) => {
         description: `Your short link: ${window.location.origin}/s/${shortCode}`,
       });
 
+      // Reset input
       setUrl("");
-      window.location.reload(); // Refresh to show new link
+      window.location.reload(); // Optional: refresh dashboard to show new link
     } catch (error: any) {
       toast({
         title: "Error",

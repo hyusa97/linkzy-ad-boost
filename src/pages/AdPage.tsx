@@ -17,13 +17,16 @@ const AdPage = () => {
   const { pageId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const target = searchParams.get("target") || "";
+
+  // ✅ Extract and validate target from URL params
+  const rawTarget = searchParams.get("target") || "";
+  const target = decodeURIComponent(rawTarget);
 
   const [showNext, setShowNext] = useState(false);
   const [pageConfig, setPageConfig] = useState<PageCfg | null>(null);
-
   const currentPage = parseInt((pageId as string) || "1", 10);
   const currentPageRef = useRef(currentPage);
+
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
@@ -32,16 +35,18 @@ const AdPage = () => {
     setShowNext(false);
     const cfg = loadConfig();
     if (!cfg || !Array.isArray(cfg.pages)) {
-      console.warn("ad funnel config missing or invalid", cfg);
       navigate("/");
       return;
     }
+
     const page = cfg.pages.find((p: any) => Number(p.id) === currentPage);
     if (!page) {
       navigate("/");
       return;
     }
+
     setPageConfig(page);
+
     try {
       updatePageVisit(currentPage);
     } catch (e) {
@@ -54,15 +59,21 @@ const AdPage = () => {
     setShowNext(true);
   }, [currentPage]);
 
+  // ✅ Fixed navigation logic
   const handleNext = () => {
+    const encodedTarget = encodeURIComponent(target);
+
     if (currentPage < 4) {
-      navigate(`/ad/${currentPage + 1}?target=${encodeURIComponent(target)}`);
+      // ✅ Keep forwarding the same target param
+      navigate(`/ad/${currentPage + 1}?target=${encodedTarget}`);
     } else {
-      // final step → go to the actual target
+      // ✅ Final redirect to the original product link
       if (target) {
-        window.location.href = target;
+        console.log("Redirecting to target:", target);
+        window.location.href = target; // Hard redirect to the real link
       } else {
-        navigate("/"); // fallback
+        console.warn("No target found, going home");
+        navigate("/");
       }
     }
   };
@@ -107,7 +118,9 @@ const AdPage = () => {
                 </div>
               </div>
               <Link to="/user/dashboard">
-                <Button variant="outline" size="sm">User Dashboard</Button>
+                <Button variant="outline" size="sm">
+                  User Dashboard
+                </Button>
               </Link>
             </div>
           </div>
@@ -122,6 +135,7 @@ const AdPage = () => {
               Your download will be ready in a moment. While you wait, check out these premium
               offers from our partners.
             </p>
+
             <div className="pt-6">
               <CountdownTimer
                 key={`countdown-page-${currentPage}-${countdownSeconds}`}
@@ -133,7 +147,9 @@ const AdPage = () => {
 
           {ads.length > 0 && (
             <div>
-              <h3 className="text-xl font-semibold text-foreground mb-6 text-center">Featured Offers</h3>
+              <h3 className="text-xl font-semibold text-foreground mb-6 text-center">
+                Featured Offers
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {ads.map((ad) => (
                   <AdCard key={ad.id} ad={ad} onAdClick={() => handleAdClick(ad.id)} />

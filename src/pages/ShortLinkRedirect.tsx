@@ -9,31 +9,36 @@ const ShortLinkRedirect = () => {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    (async () => {
+    const handleRedirect = async () => {
       if (!shortCode) {
         setErr("Invalid short link");
         return;
       }
-      // fetch original via RLS-safe RPC
-      const { data, error } = await supabase.rpc("resolve_short_code", { p_code: shortCode });
 
-      if (error || !data) {
+      // Resolve the original target URL via your Supabase RPC
+      const { data: targetUrl, error } = await supabase.rpc("resolve_short_code", {
+        p_code: shortCode,
+      });
+
+      if (error || !targetUrl) {
         console.warn("Short code resolution failed or not found:", error);
-        // Proceed to ad flow even if target is unknown, so the ad pages open
-        navigate(`/ad/1`);
+        setErr("Short link not found");
+        setTimeout(() => navigate("/"), 1500);
         return;
       }
 
-      // optional: increment click counter
+      // Increment click counter (best-effort)
       try {
         await supabase.rpc("increment_link_clicks", { p_code: shortCode });
-      } catch (error) {
-        // Silently ignore RPC errors to avoid breaking the redirect flow
-        console.warn("Failed to increment click counter:", error);
+      } catch (err) {
+        console.warn("Failed to increment click count:", err);
       }
 
-      navigate(`/ad/1?target=${encodeURIComponent(data)}`);
-    })();
+      // Redirect to the first ad page in funnel
+      navigate(`/ad/1?target=${encodeURIComponent(targetUrl)}`);
+    };
+
+    handleRedirect();
   }, [shortCode, navigate]);
 
   if (err) return <div className="p-8 text-center">{err}</div>;
