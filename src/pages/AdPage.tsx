@@ -59,9 +59,10 @@ const AdPage = () => {
       navigate(`/ad/${currentPage + 1}?target=${encodeURIComponent(target)}`);
     } else {
       // final step → go to the actual target
-      if (target) {
+      if (target && target !== '/' && (target.startsWith('http://') || target.startsWith('https://'))) {
         window.location.href = target;
       } else {
+        console.error('Invalid or missing target URL:', target);
         navigate("/"); // fallback
       }
     }
