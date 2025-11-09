@@ -1,7 +1,8 @@
 // src/pages/AdPage.tsx
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
-import { loadConfig, updatePageVisit, updateAdClick } from "@/lib/adFunnelConfig";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { loadConfig, updatePageVisit, updateAdClick, updateDownload } from "@/lib/adFunnelConfig";
 import CountdownTimer from "@/components/CountdownTimer";
 import AdCard from "@/components/AdCard";
 import { Button } from "@/components/ui/button";
@@ -16,14 +17,10 @@ type PageCfg = {
 const AdPage = () => {
   const { pageId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-
-  // ✅ Extract and validate target from URL params
-  const rawTarget = searchParams.get("target") || "";
-  const target = decodeURIComponent(rawTarget);
 
   const [showNext, setShowNext] = useState(false);
   const [pageConfig, setPageConfig] = useState<PageCfg | null>(null);
+  const [err, setErr] = useState<string | null>(null);
   const currentPage = parseInt((pageId as string) || "1", 10);
   const currentPageRef = useRef(currentPage);
 
@@ -33,25 +30,33 @@ const AdPage = () => {
 
   useEffect(() => {
     setShowNext(false);
-    const cfg = loadConfig();
-    if (!cfg || !Array.isArray(cfg.pages)) {
-      navigate("/");
-      return;
-    }
+    setErr(null);
+    loadConfig().then((cfg) => {
+      if (!cfg || !Array.isArray(cfg.pages)) {
+        setErr("Configuration error");
+        setTimeout(() => navigate("/"), 1500);
+        return;
+      }
 
-    const page = cfg.pages.find((p: any) => Number(p.id) === currentPage);
-    if (!page) {
-      navigate("/");
-      return;
-    }
+      const page = cfg.pages.find((p: any) => Number(p.id) === currentPage);
+      if (!page) {
+        setErr("Invalid page");
+        setTimeout(() => navigate("/"), 1500);
+        return;
+      }
 
-    setPageConfig(page);
+      setPageConfig(page);
 
-    try {
-      updatePageVisit(currentPage);
-    } catch (e) {
-      console.warn("updatePageVisit failed:", e);
-    }
+      try {
+        updatePageVisit(currentPage);
+      } catch (e) {
+        console.warn("updatePageVisit failed:", e);
+      }
+    }).catch((e) => {
+      console.warn("loadConfig failed:", e);
+      setErr("Configuration error");
+      setTimeout(() => navigate("/"), 1500);
+    });
   }, [currentPage, navigate]);
 
   const handleCountdownComplete = useCallback(() => {
@@ -59,21 +64,67 @@ const AdPage = () => {
     setShowNext(true);
   }, [currentPage]);
 
-  // ✅ Fixed navigation logic
-  const handleNext = () => {
-    const encodedTarget = encodeURIComponent(target);
-
+  const handleNext = async () => {
     if (currentPage < 4) {
-      // ✅ Keep forwarding the same target param
-      navigate(`/ad/${currentPage + 1}?target=${encodedTarget}`);
+      // Navigate to next ad page
+      navigate(`/ad/${currentPage + 1}`);
     } else {
-      // ✅ Final redirect to the original product link
-      if (target) {
-        console.log("Redirecting to target:", target);
-        window.location.href = target; // Hard redirect to the real link
-      } else {
-        console.warn("No target found, going home");
-        navigate("/");
+      // Final page: resolve short code from sessionStorage
+      const shortCode = sessionStorage.getItem("linkzy_short_code");
+      if (!shortCode) {
+        console.warn("No short code found in sessionStorage");
+        setErr("Session expired. Please try the link again.");
+        setTimeout(() => navigate("/"), 1500);
+        return;
+      }
+
+      // Enhanced DEV mock: Mock for any shortCode in development
+      if (import.meta.env.DEV) {
+        console.log('DEV MODE: Mocking final redirect for shortCode:', shortCode);
+        sessionStorage.removeItem("linkzy_short_code");
+        window.location.href = 'https://www.google.com';
+        return;
+      }
+
+      // Production: Resolve the original URL
+      console.log("Attempting final RPC resolution for shortCode:", shortCode);
+      try {
+        const { data: targetUrl, error: resolveError } = await supabase.rpc("resolve_short_code", {
+          p_code: shortCode,
+        });
+
+        if (resolveError || !targetUrl) {
+          console.warn("URL resolution failed:", { shortCode, resolveError });
+          setErr("Link not found");
+          setTimeout(() => navigate("/"), 1500);
+          return;
+        }
+
+        // Increment click counter
+        try {
+          console.log("Incrementing clicks for shortCode:", shortCode);
+          await supabase.rpc("increment_link_clicks", { p_code: shortCode });
+        } catch (incError) {
+          console.warn("Failed to increment clicks:", { shortCode, incError });
+        }
+
+        // Record download
+        try {
+          await updateDownload();
+        } catch (dlError) {
+          console.warn("Failed to record download:", dlError);
+        }
+
+        // Clear sessionStorage
+        sessionStorage.removeItem("linkzy_short_code");
+
+        // Hard redirect to target
+        console.log("Redirecting to target:", targetUrl);
+        window.location.href = targetUrl;
+      } catch (error) {
+        console.error("Final redirect error:", { shortCode, error });
+        setErr("Redirect failed. Please try again.");
+        setTimeout(() => navigate("/"), 1500);
       }
     }
   };
@@ -86,7 +137,11 @@ const AdPage = () => {
     }
   };
 
-  if (!pageConfig) return null;
+  if (err) {
+    return <div className="p-8 text-center">{err}</div>;
+  }
+
+  if (!pageConfig) return <div className="p-8 text-center">Loading…</div>;
 
   const countdownSeconds =
     typeof pageConfig.countdown === "number" && pageConfig.countdown >= 0

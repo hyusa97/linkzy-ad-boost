@@ -3,10 +3,15 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link2, ArrowLeft } from "lucide-react";
 import UsersTable from "@/components/admin/UsersTable";
 import GlobalStats from "@/components/admin/GlobalStats";
 import ConfigSettings from "@/components/admin/ConfigSettings";
+import AdManagement from "@/components/admin/AdManagement";
+import CountdownSettings from "@/components/admin/CountdownSettings";
+import AnalyticsDashboard from "@/components/admin/AnalyticsDashboard";
+import ImportExport from "@/components/admin/ImportExport";
 
 const Admin = () => {
   const [loading, setLoading] = useState(true);
@@ -81,13 +86,39 @@ const Admin = () => {
         {/* Global Stats */}
         <GlobalStats />
 
-        {/* Config Settings */}
+        <Tabs defaultValue="platform" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="platform">Platform Settings</TabsTrigger>
+            <TabsTrigger value="ads">Ad Management</TabsTrigger>
+            <TabsTrigger value="countdown">Countdown Settings</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="platform" className="mt-6">
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4">Platform Settings</h2>
+              <ConfigSettings />
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ads" className="mt-6">
+            <AdManagement />
+          </TabsContent>
+
+          <TabsContent value="countdown" className="mt-6">
+            <CountdownSettings />
+          </TabsContent>
+
+          <TabsContent value="analytics" className="mt-6">
+            <AnalyticsDashboard />
+          </TabsContent>
+        </Tabs>
+
         <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">Platform Settings</h2>
-          <ConfigSettings />
+          <h2 className="text-xl font-semibold mb-4">Import/Export</h2>
+          <ImportExport />
         </Card>
 
-        {/* Users Management */}
         <Card className="p-6">
           <h2 className="text-xl font-semibold mb-4">User Management</h2>
           <UsersTable />

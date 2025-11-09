@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Redirect Issue</title>
+</head>
+<body>
+    <h1>Debug Redirect Issue</h1>
+    
+    <div id="debug-info"></div>
+    
+    <button onclick="testRedirect()">Test Redirect Flow</button>
+    
+    <script>
+        function log(message) {
+            console.log(message);
+            document.getElementById('debug-info').innerHTML += '<p>' + message + '</p>';
+        }
+        
+        function testRedirect() {
+            // Clear any existing data
+            localStorage.clear();
+            
+            // Set up test data
+            const shortCode = 'test123';
+            const originalUrl = 'https://www.google.com';
+            
+            localStorage.setItem(`test_short_code_${shortCode}`, originalUrl);
+            
+            log('Test data created:');
+            log('Short code: ' + shortCode);
+            log('Original URL: ' + originalUrl);
+            log('localStorage key: test_short_code_' + shortCode);
+            log('localStorage value: ' + localStorage.getItem(`test_short_code_${shortCode}`));
+            
+            // Now test the redirect
+            log('Navigating to test link...');
+            window.location.href = '/s/test123';
+        }
+        
+        // Check if we're on the ad page
+        if (window.location.pathname.includes('/ad/')) {
+            log('Currently on ad page: ' + window.location.pathname);
+            log('Current URL: ' + window.location.href);
+            
+            // Check for target parameter
+            const urlParams = new URLSearchParams(window.location.search);
+            const target = urlParams.get('target');
+            log('Target parameter: ' + (target || 'NOT FOUND'));
+            
+            if (target) {
+                log('Target decoded: ' + decodeURIComponent(target));
+            }
+        }
+        
+        // Check if we're on the short link redirect page
+        if (window.location.pathname.includes('/s/')) {
+            log('Currently on short link redirect page');
+            log('Current URL: ' + window.location.href);
+        }
+    </script>
+</body>
+</html>
