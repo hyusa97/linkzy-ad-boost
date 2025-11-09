@@ -18,9 +18,9 @@ const ShortLinkRedirect = () => {
       const { data, error } = await supabase.rpc("resolve_short_code", { p_code: shortCode });
 
       if (error || !data) {
-        console.warn("Short code resolution failed or not found:", error);
-        // Proceed to ad flow even if target is unknown, so the ad pages open
-        navigate(`/ad/1`);
+        console.error("Short code resolution failed or not found:", error);
+        setErr("Invalid or expired short link");
+        setTimeout(() => navigate("/"), 2000);
         return;
       }
 
