@@ -17,8 +17,15 @@ const ShortLinkRedirect = () => {
       // fetch original via RLS-safe RPC
       const { data, error } = await supabase.rpc("resolve_short_code", { p_code: shortCode });
 
-      if (error || !data) {
-        console.error("Short code resolution failed or not found:", error);
+      if (error) {
+        console.error("Database error resolving short code:", error);
+        setErr("Error loading link. Please try again.");
+        setTimeout(() => navigate("/"), 2000);
+        return;
+      }
+
+      if (!data) {
+        console.warn("Short code not found:", shortCode);
         setErr("Invalid or expired short link");
         setTimeout(() => navigate("/"), 2000);
         return;

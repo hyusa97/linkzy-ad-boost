@@ -19,11 +19,13 @@ export function loadConfig() {
 }
 
 export async function updatePageVisit(page: number) {
-  // optional: store visit
-  await supabase.from("ad_visits").insert({ page, ts: new Date().toISOString() });
+  // Optional: store visit tracking - tables not yet created
+  // await supabase.from("ad_visits").insert({ page, ts: new Date().toISOString() });
+  console.log(`Ad page ${page} visited`);
 }
 
 export async function updateAdClick(adId: string) {
-  // optional: store click
-  await supabase.from("ad_clicks").insert({ ad_id: adId, ts: new Date().toISOString() });
+  // Optional: store ad click tracking - tables not yet created
+  // await supabase.from("ad_clicks").insert({ ad_id: adId, ts: new Date().toISOString() });
+  console.log(`Ad ${adId} clicked`);
 }
