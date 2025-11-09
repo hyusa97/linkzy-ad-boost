@@ -1,8 +1,7 @@
 // src/pages/AdPage.tsx
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { loadConfig, updatePageVisit, updateAdClick, updateDownload } from "@/lib/adFunnelConfig";
+import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
+import { loadConfig, updatePageVisit, updateAdClick } from "@/lib/adFunnelConfig";
 import CountdownTimer from "@/components/CountdownTimer";
 import AdCard from "@/components/AdCard";
 import { Button } from "@/components/ui/button";
@@ -17,46 +16,37 @@ type PageCfg = {
 const AdPage = () => {
   const { pageId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const target = searchParams.get("target") || "";
 
   const [showNext, setShowNext] = useState(false);
   const [pageConfig, setPageConfig] = useState<PageCfg | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+
   const currentPage = parseInt((pageId as string) || "1", 10);
   const currentPageRef = useRef(currentPage);
-
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
 
   useEffect(() => {
     setShowNext(false);
-    setErr(null);
-    loadConfig().then((cfg) => {
-      if (!cfg || !Array.isArray(cfg.pages)) {
-        setErr("Configuration error");
-        setTimeout(() => navigate("/"), 1500);
-        return;
-      }
-
-      const page = cfg.pages.find((p: any) => Number(p.id) === currentPage);
-      if (!page) {
-        setErr("Invalid page");
-        setTimeout(() => navigate("/"), 1500);
-        return;
-      }
-
-      setPageConfig(page);
-
-      try {
-        updatePageVisit(currentPage);
-      } catch (e) {
-        console.warn("updatePageVisit failed:", e);
-      }
-    }).catch((e) => {
-      console.warn("loadConfig failed:", e);
-      setErr("Configuration error");
-      setTimeout(() => navigate("/"), 1500);
-    });
+    const cfg = loadConfig();
+    if (!cfg || !Array.isArray(cfg.pages)) {
+      console.warn("ad funnel config missing or invalid", cfg);
+      navigate("/");
+      return;
+    }
+    const page = cfg.pages.find((p: any) => Number(p.id) === currentPage);
+    if (!page) {
+      navigate("/");
+      return;
+    }
+    setPageConfig(page);
+    try {
+      updatePageVisit(currentPage);
+    } catch (e) {
+      console.warn("updatePageVisit failed:", e);
+    }
   }, [currentPage, navigate]);
 
   const handleCountdownComplete = useCallback(() => {
@@ -64,67 +54,16 @@ const AdPage = () => {
     setShowNext(true);
   }, [currentPage]);
 
-  const handleNext = async () => {
+  const handleNext = () => {
     if (currentPage < 4) {
-      // Navigate to next ad page
-      navigate(`/ad/${currentPage + 1}`);
+      navigate(`/ad/${currentPage + 1}?target=${encodeURIComponent(target)}`);
     } else {
-      // Final page: resolve short code from sessionStorage
-      const shortCode = sessionStorage.getItem("linkzy_short_code");
-      if (!shortCode) {
-        console.warn("No short code found in sessionStorage");
-        setErr("Session expired. Please try the link again.");
-        setTimeout(() => navigate("/"), 1500);
-        return;
-      }
-
-      // Enhanced DEV mock: Mock for any shortCode in development
-      if (import.meta.env.DEV) {
-        console.log('DEV MODE: Mocking final redirect for shortCode:', shortCode);
-        sessionStorage.removeItem("linkzy_short_code");
-        window.location.href = 'https://www.google.com';
-        return;
-      }
-
-      // Production: Resolve the original URL
-      console.log("Attempting final RPC resolution for shortCode:", shortCode);
-      try {
-        const { data: targetUrl, error: resolveError } = await supabase.rpc("resolve_short_code", {
-          p_code: shortCode,
-        });
-
-        if (resolveError || !targetUrl) {
-          console.warn("URL resolution failed:", { shortCode, resolveError });
-          setErr("Link not found");
-          setTimeout(() => navigate("/"), 1500);
-          return;
-        }
-
-        // Increment click counter
-        try {
-          console.log("Incrementing clicks for shortCode:", shortCode);
-          await supabase.rpc("increment_link_clicks", { p_code: shortCode });
-        } catch (incError) {
-          console.warn("Failed to increment clicks:", { shortCode, incError });
-        }
-
-        // Record download
-        try {
-          await updateDownload();
-        } catch (dlError) {
-          console.warn("Failed to record download:", dlError);
-        }
-
-        // Clear sessionStorage
-        sessionStorage.removeItem("linkzy_short_code");
-
-        // Hard redirect to target
-        console.log("Redirecting to target:", targetUrl);
-        window.location.href = targetUrl;
-      } catch (error) {
-        console.error("Final redirect error:", { shortCode, error });
-        setErr("Redirect failed. Please try again.");
-        setTimeout(() => navigate("/"), 1500);
+      // final step → go to the actual target
+      if (target && target !== '/' && (target.startsWith('http://') || target.startsWith('https://'))) {
+        window.location.href = target;
+      } else {
+        console.error('Invalid or missing target URL:', target);
+        navigate("/"); // fallback
       }
     }
   };
@@ -137,11 +76,7 @@ const AdPage = () => {
     }
   };
 
-  if (err) {
-    return <div className="p-8 text-center">{err}</div>;
-  }
-
-  if (!pageConfig) return <div className="p-8 text-center">Loading…</div>;
+  if (!pageConfig) return null;
 
   const countdownSeconds =
     typeof pageConfig.countdown === "number" && pageConfig.countdown >= 0
@@ -173,9 +108,7 @@ const AdPage = () => {
                 </div>
               </div>
               <Link to="/user/dashboard">
-                <Button variant="outline" size="sm">
-                  User Dashboard
-                </Button>
+                <Button variant="outline" size="sm">User Dashboard</Button>
               </Link>
             </div>
           </div>
@@ -190,7 +123,6 @@ const AdPage = () => {
               Your download will be ready in a moment. While you wait, check out these premium
               offers from our partners.
             </p>
-
             <div className="pt-6">
               <CountdownTimer
                 key={`countdown-page-${currentPage}-${countdownSeconds}`}
@@ -202,9 +134,7 @@ const AdPage = () => {
 
           {ads.length > 0 && (
             <div>
-              <h3 className="text-xl font-semibold text-foreground mb-6 text-center">
-                Featured Offers
-              </h3>
+              <h3 className="text-xl font-semibold text-foreground mb-6 text-center">Featured Offers</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {ads.map((ad) => (
                   <AdCard key={ad.id} ad={ad} onAdClick={() => handleAdClick(ad.id)} />
