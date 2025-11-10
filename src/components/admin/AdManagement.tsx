@@ -21,6 +21,7 @@ type Ad = {
   description: string | null;
   url: string;
   image_url: string;
+  page_number: number;
   created_at: string;
 };
 
@@ -33,6 +34,7 @@ export default function AdManagement() {
     title: "",
     description: "",
     url: "",
+    page_number: 1,
   });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
@@ -109,6 +111,7 @@ export default function AdManagement() {
         description: formData.description || null,
         url: formData.url,
         image_url: imageUrl,
+        page_number: formData.page_number,
       };
 
       if (editingAd) {
@@ -143,6 +146,7 @@ export default function AdManagement() {
       title: ad.title,
       description: ad.description || "",
       url: ad.url,
+      page_number: ad.page_number,
     });
     setImagePreview(ad.image_url);
     setDialogOpen(true);
@@ -173,7 +177,7 @@ export default function AdManagement() {
   };
 
   const resetForm = () => {
-    setFormData({ title: "", description: "", url: "" });
+    setFormData({ title: "", description: "", url: "", page_number: 1 });
     setImageFile(null);
     setImagePreview("");
     setEditingAd(null);
@@ -246,6 +250,27 @@ export default function AdManagement() {
                   required
                   placeholder="https://example.com"
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="page_number">Display on Funnel Page *</Label>
+                <select
+                  id="page_number"
+                  value={formData.page_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, page_number: parseInt(e.target.value) })
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  required
+                >
+                  <option value={1}>Page 1</option>
+                  <option value={2}>Page 2</option>
+                  <option value={3}>Page 3</option>
+                  <option value={4}>Page 4</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Select which funnel page (1-4) this ad should appear on
+                </p>
               </div>
 
               <div>
@@ -327,6 +352,9 @@ export default function AdManagement() {
                 )}
                 <p className="text-xs text-muted-foreground truncate">
                   URL: {ad.url}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Displays on: <span className="font-semibold">Page {ad.page_number}</span>
                 </p>
                 <div className="flex gap-2 pt-2">
                   <Button
