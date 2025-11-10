@@ -1,344 +1,386 @@
 import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, ArrowUp, ArrowDown } from "lucide-react";
-import { loadConfig, saveConfig, type FullConfig, type Ad } from "@/lib/adFunnelConfig";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
+import { Pencil, Trash2, Plus, X } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
-const AdManagement = () => {
-  const [config, setConfig] = useState<FullConfig | null>(null);
-  const [loading, setLoading] = useState(false);
+type Ad = {
+  id: string;
+  title: string;
+  description: string | null;
+  url: string;
+  image_url: string;
+  page_number: number;
+  created_at: string;
+};
+
+export default function AdManagement() {
+  const [ads, setAds] = useState<Ad[]>([]);
+  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingAd, setEditingAd] = useState<Ad | null>(null);
   const [formData, setFormData] = useState({
     title: "",
-    img: "",
-    link: "",
-    assignedPage: 1,
-    order: 0,
+    description: "",
+    url: "",
+    page_number: 1,
   });
-  const { toast } = useToast();
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    loadAdConfig();
+    fetchAds();
   }, []);
 
-  const loadAdConfig = async () => {
+  const fetchAds = async () => {
     try {
-      const cfg = await loadConfig();
-      setConfig(cfg);
-    } catch (error) {
-      console.error("Failed to load config:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load ad configuration",
-        variant: "destructive",
-      });
-    }
-  };
+      const { data, error } = await supabase
+        .from("ads")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-  const handleSave = async () => {
-    if (!config) return;
-
-    setLoading(true);
-    try {
-      await saveConfig(config);
-      toast({
-        title: "Success",
-        description: "Ad configuration saved",
-      });
+      if (error) throw error;
+      setAds(data || []);
     } catch (error) {
-      console.error("Failed to save config:", error);
-      toast({
-        title: "Error",
-        description: "Failed to save ad configuration",
-        variant: "destructive",
-      });
+      console.error("Error fetching ads:", error);
+      toast({ title: "Error loading ads", variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddAd = () => {
-    setEditingAd(null);
-    setFormData({
-      title: "",
-      img: "",
-      link: "",
-      assignedPage: 1,
-      order: 0,
-    });
-    setDialogOpen(true);
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.type.startsWith("image/")) {
+        toast({ title: "Please select an image file", variant: "destructive" });
+        return;
+      }
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
   };
 
-  const handleEditAd = (ad: Ad, pageId: number) => {
+  const uploadImage = async (file: File): Promise<string> => {
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("ad-images")
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from("ad-images")
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUploading(true);
+
+    try {
+      let imageUrl = editingAd?.image_url || "";
+
+      if (imageFile) {
+        imageUrl = await uploadImage(imageFile);
+      } else if (!editingAd) {
+        toast({ title: "Please select an image", variant: "destructive" });
+        setUploading(false);
+        return;
+      }
+
+      const adData = {
+        title: formData.title,
+        description: formData.description || null,
+        url: formData.url,
+        image_url: imageUrl,
+        page_number: formData.page_number,
+      };
+
+      if (editingAd) {
+        const { error } = await supabase
+          .from("ads")
+          .update(adData)
+          .eq("id", editingAd.id);
+
+        if (error) throw error;
+        toast({ title: "Ad updated successfully" });
+      } else {
+        const { error } = await supabase.from("ads").insert([adData]);
+
+        if (error) throw error;
+        toast({ title: "Ad created successfully" });
+      }
+
+      resetForm();
+      fetchAds();
+      setDialogOpen(false);
+    } catch (error) {
+      console.error("Error saving ad:", error);
+      toast({ title: "Error saving ad", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEdit = (ad: Ad) => {
     setEditingAd(ad);
     setFormData({
       title: ad.title,
-      img: ad.img,
-      link: ad.link,
-      assignedPage: pageId,
-      order: ad.order,
+      description: ad.description || "",
+      url: ad.url,
+      page_number: ad.page_number,
     });
+    setImagePreview(ad.image_url);
     setDialogOpen(true);
   };
 
-  const handleDeleteAd = async (adId: string) => {
-    if (!config) return;
+  const handleDelete = async (ad: Ad) => {
+    if (!confirm("Are you sure you want to delete this ad?")) return;
 
-    const newConfig = { ...config };
-    for (const page of newConfig.pages) {
-      page.ads = page.ads.filter(ad => ad.id !== adId);
-    }
-    setConfig(newConfig);
-    await handleSave();
-  };
-
-  const handleReorderAd = (pageId: number, adId: string, direction: 'up' | 'down') => {
-    if (!config) return;
-
-    const newConfig = { ...config };
-    const page = newConfig.pages.find(p => p.id === pageId);
-    if (!page) return;
-
-    const adIndex = page.ads.findIndex(ad => ad.id === adId);
-    if (adIndex === -1) return;
-
-    if (direction === 'up' && adIndex > 0) {
-      [page.ads[adIndex - 1], page.ads[adIndex]] = [page.ads[adIndex], page.ads[adIndex - 1]];
-    } else if (direction === 'down' && adIndex < page.ads.length - 1) {
-      [page.ads[adIndex], page.ads[adIndex + 1]] = [page.ads[adIndex + 1], page.ads[adIndex]];
-    }
-
-    setConfig(newConfig);
-  };
-
-  const handleSubmitAd = () => {
-    if (!config) return;
-
-    // Validate URLs
     try {
-      new URL(formData.link);
-      new URL(formData.img);
-    } catch (e) {
-      toast({
-        title: "Error",
-        description: "Invalid URL format",
-        variant: "destructive",
-      });
-      return;
-    }
+      const { error } = await supabase.from("ads").delete().eq("id", ad.id);
 
-    const newConfig = { ...config };
-    const page = newConfig.pages.find(p => p.id === formData.assignedPage);
-    if (!page) return;
+      if (error) throw error;
 
-    if (editingAd) {
-      // Update existing
-      const adIndex = page.ads.findIndex(ad => ad.id === editingAd.id);
-      if (adIndex !== -1) {
-        page.ads[adIndex] = {
-          ...editingAd,
-          title: formData.title,
-          img: formData.img,
-          link: formData.link,
-          order: formData.order,
-        };
+      // Try to delete the image from storage
+      if (ad.image_url) {
+        const fileName = ad.image_url.split("/").pop();
+        if (fileName) {
+          await supabase.storage.from("ad-images").remove([fileName]);
+        }
       }
-    } else {
-      // Add new
-      const newAd: Ad = {
-        id: `ad_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        title: formData.title,
-        img: formData.img,
-        link: formData.link,
-        order: formData.order,
-      };
-      page.ads.push(newAd);
-    }
 
-    setConfig(newConfig);
-    setDialogOpen(false);
-    handleSave();
+      toast({ title: "Ad deleted successfully" });
+      fetchAds();
+    } catch (error) {
+      console.error("Error deleting ad:", error);
+      toast({ title: "Error deleting ad", variant: "destructive" });
+    }
   };
 
-  if (!config) {
-    return <div>Loading...</div>;
+  const resetForm = () => {
+    setFormData({ title: "", description: "", url: "", page_number: 1 });
+    setImageFile(null);
+    setImagePreview("");
+    setEditingAd(null);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      resetForm();
+    }
+    setDialogOpen(open);
+  };
+
+  if (loading) {
+    return <div className="text-center py-4">Loading ads...</div>;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Ad Management</h2>
-        <div className="flex gap-2">
-          <Button onClick={handleAddAd}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Ad
-          </Button>
-          <Button onClick={handleSave} disabled={loading}>
-            {loading ? "Saving..." : "Save Changes"}
-          </Button>
-        </div>
-      </div>
+        <h3 className="text-lg font-semibold">Manage Ads</h3>
+        <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Add New Ad
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {editingAd ? "Edit Ad" : "Create New Ad"}
+              </DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="title">Ad Title *</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) =>
+                    setFormData({ ...formData, title: e.target.value })
+                  }
+                  required
+                  placeholder="Enter ad title"
+                />
+              </div>
 
-      <Tabs defaultValue="page1">
-        <TabsList>
-          {[1, 2, 3, 4].map(pageId => (
-            <TabsTrigger key={pageId} value={`page${pageId}`}>
-              Page {pageId}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder="Enter ad description (optional)"
+                  rows={3}
+                />
+              </div>
 
-        {[1, 2, 3, 4].map(pageId => {
-          const page = config.pages.find(p => p.id === pageId);
-          if (!page) return null;
+              <div>
+                <Label htmlFor="url">Target URL *</Label>
+                <Input
+                  id="url"
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) =>
+                    setFormData({ ...formData, url: e.target.value })
+                  }
+                  required
+                  placeholder="https://example.com"
+                />
+              </div>
 
-          return (
-            <TabsContent key={pageId} value={`page${pageId}`}>
-              <Card className="p-6">
-                <h3 className="text-lg font-medium mb-4">Page {pageId} Ads</h3>
-                {page.ads.length === 0 ? (
-                  <p className="text-muted-foreground">No ads for this page</p>
-                ) : (
-                  <div className="space-y-4">
-                    {page.ads.map((ad, index) => (
-                      <div key={ad.id} className="flex items-center gap-4 p-4 border rounded">
-                        <img src={ad.img} alt={ad.title} className="w-16 h-16 object-cover rounded" />
-                        <div className="flex-1">
-                          <h4 className="font-medium">{ad.title}</h4>
-                          <p className="text-sm text-muted-foreground">{ad.link}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleReorderAd(pageId, ad.id, 'up')}
-                            disabled={index === 0}
-                          >
-                            <ArrowUp className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleReorderAd(pageId, ad.id, 'down')}
-                            disabled={index === page.ads.length - 1}
-                          >
-                            <ArrowDown className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleEditAd(ad, pageId)}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Ad</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete this ad? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteAd(ad.id)}>
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                    ))}
+              <div>
+                <Label htmlFor="page_number">Display on Funnel Page *</Label>
+                <select
+                  id="page_number"
+                  value={formData.page_number}
+                  onChange={(e) =>
+                    setFormData({ ...formData, page_number: parseInt(e.target.value) })
+                  }
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  required
+                >
+                  <option value={1}>Page 1</option>
+                  <option value={2}>Page 2</option>
+                  <option value={3}>Page 3</option>
+                  <option value={4}>Page 4</option>
+                </select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Select which funnel page (1-4) this ad should appear on
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="image">
+                  Ad Image * (JPG or PNG)
+                </Label>
+                <Input
+                  id="image"
+                  type="file"
+                  accept="image/jpeg,image/png,image/jpg"
+                  onChange={handleImageChange}
+                  required={!editingAd}
+                />
+                {imagePreview && (
+                  <div className="mt-2 relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="w-full h-48 object-cover rounded"
+                    />
+                    {imageFile && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setImageFile(null);
+                          setImagePreview(editingAd?.image_url || "");
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 )}
-              </Card>
-            </TabsContent>
-          );
-        })}
-      </Tabs>
+              </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingAd ? "Edit Ad" : "Add New Ad"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                value={formData.title}
-                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Ad title"
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => handleDialogClose(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={uploading}>
+                  {uploading
+                    ? "Saving..."
+                    : editingAd
+                    ? "Update Ad"
+                    : "Create Ad"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {ads.length === 0 ? (
+        <Card className="p-8 text-center text-muted-foreground">
+          No ads yet. Click "Add New Ad" to create your first ad.
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {ads.map((ad) => (
+            <Card key={ad.id} className="overflow-hidden">
+              <img
+                src={ad.image_url}
+                alt={ad.title}
+                className="w-full h-48 object-cover"
               />
-            </div>
-            <div>
-              <Label htmlFor="img">Image URL</Label>
-              <Input
-                id="img"
-                value={formData.img}
-                onChange={(e) => setFormData({ ...formData, img: e.target.value })}
-                placeholder="https://example.com/image.jpg"
-              />
-            </div>
-            <div>
-              <Label htmlFor="link">Link URL</Label>
-              <Input
-                id="link"
-                value={formData.link}
-                onChange={(e) => setFormData({ ...formData, link: e.target.value })}
-                placeholder="https://example.com"
-              />
-            </div>
-            <div>
-              <Label htmlFor="assignedPage">Assigned Page</Label>
-              <select
-                id="assignedPage"
-                value={formData.assignedPage}
-                onChange={(e) => setFormData({ ...formData, assignedPage: parseInt(e.target.value) })}
-                className="w-full p-2 border rounded"
-              >
-                {[1, 2, 3, 4].map(id => (
-                  <option key={id} value={id}>Page {id}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="order">Order</Label>
-              <Input
-                id="order"
-                type="number"
-                value={formData.order}
-                onChange={(e) => setFormData({ ...formData, order: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleSubmitAd}>
-                {editingAd ? "Update" : "Add"} Ad
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+              <div className="p-4 space-y-2">
+                <h4 className="font-semibold truncate">{ad.title}</h4>
+                {ad.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {ad.description}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground truncate">
+                  URL: {ad.url}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Displays on: <span className="font-semibold">Page {ad.page_number}</span>
+                </p>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEdit(ad)}
+                    className="flex-1"
+                  >
+                    <Pencil className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDelete(ad)}
+                    className="flex-1"
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
-};
-
-export default AdManagement;
+}

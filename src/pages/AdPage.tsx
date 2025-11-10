@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, Link, useSearchParams } from "react-router-dom";
 import { loadConfig, updatePageVisit, updateAdClick } from "@/lib/adFunnelConfig";
+import { supabase } from "@/integrations/supabase/client";
 import CountdownTimer from "@/components/CountdownTimer";
 import AdCard from "@/components/AdCard";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ const AdPage = () => {
 
   const [showNext, setShowNext] = useState(false);
   const [pageConfig, setPageConfig] = useState<PageCfg | null>(null);
+  const [adsFromDb, setAdsFromDb] = useState<Array<{ id: string; title?: string; description?: string; url?: string; image?: string }>>([]);
 
   const currentPage = parseInt((pageId as string) || "1", 10);
   const currentPageRef = useRef(currentPage);
@@ -42,6 +44,39 @@ const AdPage = () => {
       return;
     }
     setPageConfig(page);
+    
+    // Fetch ads from database for current page
+    const fetchAds = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("ads")
+          .select("*")
+          .eq("page_number", currentPage);
+        
+        if (error) {
+          console.error("Error fetching ads:", error);
+          setAdsFromDb([]);
+          return;
+        }
+        
+        // Map database ads to the format expected by AdCard
+        const mappedAds = (data || []).map(ad => ({
+          id: ad.id,
+          title: ad.title,
+          description: ad.description || undefined,
+          url: ad.url,
+          image: ad.image_url,
+        }));
+        
+        setAdsFromDb(mappedAds);
+      } catch (e) {
+        console.warn("Failed to fetch ads:", e);
+        setAdsFromDb([]);
+      }
+    };
+    
+    fetchAds();
+    
     try {
       updatePageVisit(currentPage);
     } catch (e) {
@@ -82,7 +117,8 @@ const AdPage = () => {
     typeof pageConfig.countdown === "number" && pageConfig.countdown >= 0
       ? pageConfig.countdown
       : 10;
-  const ads = Array.isArray(pageConfig.ads) ? pageConfig.ads : [];
+  // Use ads from database instead of config
+  const ads = adsFromDb;
 
   return (
     <div className="min-h-screen bg-background">

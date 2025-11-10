@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ads: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          image_url: string
+          page_number: number
+          title: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url: string
+          page_number?: number
+          title: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          image_url?: string
+          page_number?: number
+          title?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       analytics: {
         Row: {
           clicks: number
