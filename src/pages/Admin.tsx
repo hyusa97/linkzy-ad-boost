@@ -7,6 +7,7 @@ import { Link2, ArrowLeft } from "lucide-react";
 import UsersTable from "@/components/admin/UsersTable";
 import GlobalStats from "@/components/admin/GlobalStats";
 import ConfigSettings from "@/components/admin/ConfigSettings";
+import AdManagement from "@/components/admin/AdManagement";
 
 const Admin = () => {
   const [loading, setLoading] = useState(true);
@@ -85,6 +86,12 @@ const Admin = () => {
         <Card className="p-6">
           <h2 className="text-xl font-semibold mb-4">Platform Settings</h2>
           <ConfigSettings />
+        </Card>
+
+        {/* Ad Management */}
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold mb-4">Ad Management</h2>
+          <AdManagement />
         </Card>
 
         {/* Users Management */}
